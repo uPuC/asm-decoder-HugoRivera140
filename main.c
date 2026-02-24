@@ -6,8 +6,8 @@ Prac 2 - AVR ASM OpCode Decoder
 #include <inttypes.h>
 
 const uint8_t flash_mem[] ={ 
-    0x00, 0x24, 0xA0, 0xE0, 0xB2, 0xE0, 0x0D, 0x91, 0x00, 0x30, 0xE9, 0xF7, 0x11, 0x97, 0xC0, 0xE0, 0xC4, 
-    0xD2, 0xE0, 0x09, 0x91, 0x1E, 0x91, 0x01, 0x17, 0x51, 0xF4, 0x0A, 0x2F, 0x0A, 0x95, 0x1C, 0x2F, 0x65, 
+    0x00, 0x24, 0xA0, 0xE0, 0xB2, 0xE0, 0x0D, 0x91, 0x00, 0x30, 0xE9, 0xF7, 0x11, 0x97, 0xC0, 0xE0, 
+    0xD2, 0xE0, 0x09, 0x91, 0x1E, 0x91, 0x01, 0x17, 0x51, 0xF4, 0x0A, 0x2F, 0x0A, 0x95, 0x1C, 0x2F, 
     0x01, 0x17, 0xB9, 0xF7, 0x0B, 0x2F, 0x1D, 0x2F, 0x01, 0x17, 0x99, 0xF7, 0x03, 0x94, 0x00, 0x00 };
 
 // 0x2400 - 0010 0100 0000 0000
@@ -34,50 +34,53 @@ const uint8_t flash_mem[] ={
 // 0xE0C0 - 1110 0000 1100 0000
 // LDI R28, 0x00
 
-// 0xD2C4 - 1101 0010 1100 0100
-// RCALL 0x2C4
-
-// 0xE0E0 - 1110 0000 1110 0000
-// SBC R30, R0
+// 0xE0D2 - 1110 0000 1011 0010
+// LDI R29, 0x02
 
 // 0x9109 - 1001 0001 0000 1001
-// ADC R9, R17
+// LD 
 
 // 0x911E - 1001 0001 0001 1110
-// MOVW R18, R2
+// LD
 
-// 0xF401 - 1111 0100 0000 0001
-// SUBI R17, 0x107
+// 0x1701 - 0001 0111 0000 0001
+// CP
 
-// 0x2F51 - 0010 1111 0101 0001
-// SBC R15, R20
+// 0xF451 - 1111 0100 0101 0001
+// BRNE
 
-// 0x950A - 1001 0101 0000 1010
-// SBC R2, R31
+// 0x2F0A
+//MOV
 
-// 0x2F1C - 0010 1111 0001 1100
-// ADC R9, R5
+// 0x950A
+//INC
 
-// 0x0165 - 0000 0001 0110 0101
-// ORI R18, 0x50F
+// 0x2F1C
+//MOV
 
-// 0xF7B9 - 1111 0111 1011 1001
-// CP R16, R17
+// 0x1701
+//CP
 
-// 0x2F0B - 0010 1111 0000 1011
-// BRNE 0x77
+// 0xF7B9
+//BRNE
 
-// 0x2F1D - 0010 1111 0001 1101
-// MOV R16, R27
+// 0x2F0B
+//MOV
 
-// 0xF701 - 1111 0111 0000 0001
-// MOV R17, R29
+// 0x2F1D
+//MOV
 
-// 0x9499 - 1001 0100 1001 1001
-// CP R16, R17
+// 0x1701
+//CP
 
-// 0x0000 - 0000 0000 0000 0000
-// BRNE 0x73
+// 0xF799
+//BRNE
+
+// 0x9403
+//INC
+
+// 0x0000
+//NOP
 
 enum{
     e_NOP,
@@ -112,8 +115,9 @@ typedef union {
     }type4;
     
     struct{
-        uint16_t s7:7;
-        uint16_t op9:9;
+        uint16_t mode3:3;
+        uint16_t k7:7;
+        uint16_t op6:6;
     }type5;
     
     struct{
@@ -162,21 +166,37 @@ int main()
             printf("LDI r%d, 0x%X\n", 16 + instruction.type3.d4, (instruction.type3.op8 & 0x0F) << 4 | instruction.type3.K4);
         
         // LD Rd, X+ (1001 000d dddd 1101)
-        else if ((instruction.op16 & 0xFE0F) == 0x900D)
+        else if ((instruction.op16 & 0xFE0F) == 0x900D || (instruction.op16 & 0xFE09) == 0x9009 || (instruction.op16 & 0xFE0F) == 0x900E)
             printf("LD r%d, X+\n", (instruction.op16 >> 4) & 0x1F);
         
         // CPI Rd, K (0011 KKKK dddd KKKK)
         else if ((instruction.op16 & 0xF000) == 0x3000)
             printf("CPI r%d, 0x%X\n", 16 + instruction.type4.d5, (instruction.type4.op8 & 0x0F) << 4 | instruction.type4.s3);
         
-        // BRNE s (1111 01kk kkkk ks00) - Branch if Not Equal
-        else if ((instruction.op16 & 0xF800) == 0xF000)
-            printf("BRNE 0x%X\n", instruction.type5.s7);
+
+        // BRNE k (1111 01kk kkkk k001)
+        else if ((instruction.op16 & 0xFC07) == 0xF401)
+        {
+            int8_t k = (instruction.op16 >> 3) & 0x7F; // extraer k
+
+            // extensión de signo (7 bits → 8 bits)
+            if (k & 0x40)
+                k |= 0x80;
+
+            printf("BRNE %+d\n", k + 1);
+        }
         
         // SBIW Rd, K (1001 0111 KKdd KKKK)
         else if ((instruction.op16 & 0xFF00) == 0x9700)
             printf("SBIW r%d, 0x%X\n", 24 + (instruction.type6.d2 * 2), instruction.type6.K6);
-        
+
+
+        // 0x950A - 1001 0101 0000 1010
+        // DEC Rd (1001 010d dddd 1010)
+        else if ((instruction.op16 & 0xFE0F) == 0x940A)
+            printf("DEC r%d\n", (instruction.op16 >> 4) & 0x1F);
+
+            
         // RCALL k (1101 kkkk kkkk kkkk)
         else if ((instruction.op16 & 0xF000) == 0xD000)
             printf("RCALL 0x%X\n", instruction.type7.K12 & 0xFFF);
@@ -205,10 +225,6 @@ int main()
         else if ((instruction.op16 & 0xF000) == 0x5000)
             printf("SUBI r%d, 0x%X\n", 16 + instruction.type3.d4, (instruction.type3.op8 & 0x0F) << 4 | instruction.type3.K4);
         
-        // ORI Rd, K (0110 KKKK dddd KKKK)
-        else if ((instruction.op16 & 0xF000) == 0x6000)
-            printf("ORI r%d, 0x%X\n", 16 + instruction.type3.d4, (instruction.type3.op8 & 0x0F) << 4 | instruction.type3.K4);
-        
         // MOV Rd, Rr (0010 11rd dddd rrrr)
         else if ((instruction.op16 & 0xFC00) == 0x2C00)
             printf("MOV r%d, r%d\n", instruction.type2.d5, instruction.type2.r4 | (instruction.type2.r1 << 4));
@@ -216,10 +232,6 @@ int main()
         // LDS Rd, k (1001 000d dddd 0000) - 32 bits
         else if ((instruction.op16 & 0xFE0F) == 0x9000)
             printf("LDS r%d, 0x?????\n", (instruction.op16 >> 4) & 0x1F);
-        
-        // DEC Rd (1001 010d dddd 1010)
-        else if ((instruction.op16 & 0xFE0F) == 0x940A)
-            printf("DEC r%d\n", (instruction.op16 >> 4) & 0x1F);
         
         // INC Rd (1001 010d dddd 0011)
         else if ((instruction.op16 & 0xFE0F) == 0x9403)
